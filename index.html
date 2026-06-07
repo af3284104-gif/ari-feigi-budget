@@ -382,7 +382,7 @@ function renderChecking(container) {
     const type = el("ch-type").value;
     const location = el("ch-loc").value;
     const note = el("ch-note").value;
-    if (!label || !amount) return;
+      if (!label || !amount) return;
     const entry = {id:uid(),label,amount,type,location,note,date:new Date().toISOString().slice(0,10)};
     updateData(d=>({...d,months:{...d.months,[currentMonth]:{...(d.months[currentMonth]||{}),checking:[...entries,entry]}}}));
   };
@@ -407,4 +407,363 @@ function renderChecking(container) {
   <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:16px;margin-bottom:16px">
     <div style="color:white;font-weight:600;margin-bottom:12px">הוסף תנועה</div>
     <input id="ch-label" type="text" placeholder="תיאור..." dir="rtl"
-      style="width:100%;backg
+      style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 12px;color:white;font-size:14px;outline:none;margin-bottom:8px;box-sizing:border-box" />
+    <input id="ch-amount" type="number" placeholder="סכום" dir="ltr"
+      style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 12px;color:white;font-size:14px;outline:none;margin-bottom:8px;box-sizing:border-box" />
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <select id="ch-type" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px;color:white;font-size:13px;outline:none">
+        <option value="income">הכנסה</option>
+        <option value="expense">הוצאה</option>
+      </select>
+      <select id="ch-loc" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px;color:white;font-size:13px;outline:none" dir="rtl">
+        <option value="account">חשבון בנק</option>
+        <option value="cash">מזומן</option>
+        <option value="savings_account">חסכון</option>
+        <option value="other">אחר</option>
+      </select>
+    </div>
+    <input id="ch-note" type="text" placeholder="הערה..." dir="rtl"
+      style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 12px;color:rgba(255,255,255,0.6);font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box" />
+    <button onclick="window.addChecking()" style="width:100%;padding:10px;background:#fbbf24;color:#1e1b4b;font-weight:bold;border:none;border-radius:12px;cursor:pointer;font-size:14px">הוסף</button>
+  </div>
+  <div>
+    ${entries.length===0?`<div style="text-align:center;color:rgba(255,255,255,0.3);padding:24px">אין תנועות לחודש זה</div>`:""}
+    ${entries.map(e=>`
+      <div style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;margin-bottom:8px">
+        <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${e.type==="income"?"#34d399":"#f87171"}"></div>
+        <div style="flex:1;min-width:0">
+          <div style="color:white;font-size:14px">${e.label}</div>
+          ${e.note?`<div style="color:rgba(255,255,255,0.4);font-size:12px">${e.note}</div>`:""}
+          <div style="color:rgba(255,255,255,0.3);font-size:11px">${locLabels[e.location]||e.location} · ${e.date}</div>
+        </div>
+        <div style="color:${e.type==="income"?"#34d399":"#f87171"};font-weight:600;font-size:14px">${e.type==="income"?"+":"-"}${fmt(e.amount)}</div>
+        <button onclick="window.removeChecking('${e.id}')" style="color:rgba(255,255,255,0.2);background:none;border:none;cursor:pointer;font-size:16px">🗑</button>
+      </div>`).join("")}
+  </div>`;
+}
+
+// ── ASSETS ───────────────────────────────────────────────────────
+function renderAssets(container) {
+  const totalAssets = appData.assets.reduce((s,a)=>{
+    const records = appData.assetValues[a.id]||[];
+    return s + (records[records.length-1]?.amount||0);
+  },0);
+  const locLabels = {account:"חשבון בנק",fund:"קרן השקעות",pension:"פנסיה",property:"נכס נדל״ן",cash:"מזומן",other:"אחר"};
+
+  window.updateAsset = id => {
+    const amount = parseFloat(el(`asset-amount-${id}`).value)||0;
+    const location = el(`asset-loc-${id}`).value;
+    const note = el(`asset-note-${id}`).value;
+    const record = {id:uid(),amount,location,note,date:new Date().toISOString().slice(0,10)};
+    updateData(d=>({...d,assetValues:{...d.assetValues,[id]:[...(d.assetValues[id]||[]),record]}}));
+  };
+  window.addAsset = () => {
+    const label = el("new-asset").value.trim();
+    if (!label) return;
+    updateData(d=>({...d,assets:[...d.assets,{id:uid(),label,custom:true}]}));
+    el("new-asset").value="";
+  };
+  window.removeAsset = id => {
+    updateData(d=>({...d,assets:d.assets.filter(a=>a.id!==id)}));
+  };
+
+  let html = `
+  <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:16px;text-align:center;margin-bottom:16px">
+    <div style="color:rgba(255,255,255,0.5);font-size:13px;margin-bottom:4px">סה״כ נכסים</div>
+    <div style="color:#fbbf24;font-weight:bold;font-size:40px">${fmt(totalAssets)}</div>
+  </div>`;
+
+  appData.assets.forEach(a => {
+    const records = appData.assetValues[a.id]||[];
+    const last = records[records.length-1];
+    html += `
+    <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="color:white;font-weight:500">${a.label}</div>
+        ${a.custom?`<button onclick="window.removeAsset('${a.id}')" style="color:rgba(255,255,255,0.2);background:none;border:none;cursor:pointer">🗑</button>`:""}
+      </div>
+      ${last?`<div style="color:#34d399;font-weight:bold;font-size:24px;margin-bottom:4px">${fmt(last.amount)}</div>
+        <div style="color:rgba(255,255,255,0.4);font-size:12px">${locLabels[last.location]||last.location} · ${last.date}</div>
+        ${last.note?`<div style="color:rgba(255,255,255,0.4);font-size:12px">${last.note}</div>`:""}
+      `:`<div style="color:rgba(255,255,255,0.3);font-size:13px">אין נתון עדיין</div>`}
+      <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.1);padding-top:12px">
+        <input id="asset-amount-${a.id}" type="number" placeholder="שווי נוכחי" dir="ltr"
+          style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px;color:white;font-size:13px;outline:none;margin-bottom:6px;box-sizing:border-box" />
+        <select id="asset-loc-${a.id}" style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px;color:white;font-size:13px;outline:none;margin-bottom:6px" dir="rtl">
+          <option value="account">חשבון בנק</option>
+          <option value="fund">קרן השקעות</option>
+          <option value="pension">פנסיה</option>
+          <option value="property">נכס נדל״ן</option>
+          <option value="cash">מזומן</option>
+          <option value="other">אחר</option>
+        </select>
+        <input id="asset-note-${a.id}" type="text" placeholder="הערה..." dir="rtl"
+          style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px;color:rgba(255,255,255,0.6);font-size:13px;outline:none;margin-bottom:6px;box-sizing:border-box" />
+        <button onclick="window.updateAsset('${a.id}')" style="width:100%;padding:8px;background:rgba(251,191,36,0.2);color:#fbbf24;border:1px solid rgba(251,191,36,0.4);border-radius:10px;cursor:pointer;font-size:13px">עדכן</button>
+      </div>
+    </div>`;
+  });
+
+  html += `
+  <div style="background:rgba(255,255,255,0.05);border:1px dashed rgba(255,255,255,0.2);border-radius:16px;padding:16px">
+    <input id="new-asset" type="text" placeholder="שם הנכס החדש..." dir="rtl"
+      style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 12px;color:white;font-size:14px;outline:none;margin-bottom:8px;box-sizing:border-box" />
+    <button onclick="window.addAsset()" style="width:100%;padding:8px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border:none;border-radius:10px;cursor:pointer;font-size:13px">+ הוסף נכס</button>
+  </div>`;
+
+  container.innerHTML = html;
+}
+
+// ── GOALS ────────────────────────────────────────────────────────
+function renderGoals(container) {
+  const totalSaved = appData.goals.reduce((s,g)=>s+(appData.goalValues[g.id]||0),0);
+  const totalTarget = appData.goals.reduce((s,g)=>s+g.target,0);
+  const pctTotal = Math.min(100,(totalSaved/totalTarget)*100);
+  const COLORS = ["#4ade80","#60a5fa","#f472b6","#fb923c","#a78bfa","#34d399","#fbbf24","#f87171"];
+
+  window.updateGoalAmount = (id, val) => {
+    updateData(d=>({...d,goalValues:{...d.goalValues,[id]:val}}));
+  };
+  window.updateGoalTarget = (id, val) => {
+    updateData(d=>({...d,goals:d.goals.map(g=>g.id===id?{...g,target:val}:g)}));
+  };
+  window.updateGoalColor = (id, color) => {
+    updateData(d=>({...d,goals:d.goals.map(g=>g.id===id?{...g,color}:g)}));
+  };
+  window.removeGoal = id => {
+    updateData(d=>({...d,goals:d.goals.filter(g=>g.id!==id)}));
+  };
+  window.addGoal = () => {
+    const label = el("new-goal-label").value.trim();
+    const target = parseFloat(el("new-goal-target").value)||0;
+    if (!label) return;
+    updateData(d=>({...d,goals:[...d.goals,{id:uid(),label,target,color:"#60a5fa"}]}));
+    el("new-goal-label").value="";
+    el("new-goal-target").value="";
+  };
+
+  let html = `
+  <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:16px;text-align:center;margin-bottom:16px">
+    <div style="color:rgba(255,255,255,0.5);font-size:13px;margin-bottom:4px">סה״כ נחסך</div>
+    <div style="color:#fbbf24;font-weight:bold;font-size:40px">${fmt(totalSaved)}</div>
+    <div style="color:rgba(255,255,255,0.3);font-size:13px;margin-top:4px">מתוך יעד ${fmt(totalTarget)}</div>
+    <div style="height:8px;background:rgba(255,255,255,0.1);border-radius:9999px;overflow:hidden;margin-top:12px">
+      <div style="height:100%;width:${pctTotal}%;background:linear-gradient(to right,#fbbf24,#34d399);border-radius:9999px"></div>
+    </div>
+  </div>`;
+
+  appData.goals.forEach(g => {
+    const saved = appData.goalValues[g.id]||0;
+    const pct = Math.min(100,(saved/g.target)*100);
+    html += `
+    <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <div style="width:12px;height:12px;border-radius:50%;background:${g.color}"></div>
+        <div style="color:white;font-weight:500;flex:1">${g.label}</div>
+        <button onclick="window.removeGoal('${g.id}')" style="color:rgba(255,255,255,0.2);background:none;border:none;cursor:pointer">🗑</button>
+      </div>
+      <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:9999px;overflow:hidden;margin-bottom:4px">
+        <div style="height:100%;width:${pct}%;background:${g.color};border-radius:9999px"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:12px">
+        <span>${pct.toFixed(0)}%</span><span>${fmt(saved)} / ${fmt(g.target)}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <div style="color:rgba(255,255,255,0.4);font-size:11px;margin-bottom:4px">נחסך</div>
+          <input type="number" value="${saved}" onchange="window.updateGoalAmount('${g.id}',parseFloat(this.value)||0)"
+            style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px;color:white;font-size:13px;outline:none;box-sizing:border-box" dir="ltr" />
+        </div>
+          <div>
+          <div style="color:rgba(255,255,255,0.4);font-size:11px;margin-bottom:4px">יעד</div>
+          <input type="number" value="${g.target}" onchange="window.updateGoalTarget('${g.id}',parseFloat(this.value)||0)"
+            style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px;color:white;font-size:13px;outline:none;box-sizing:border-box" dir="ltr" />
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${COLORS.map(c=>`<button onclick="window.updateGoalColor('${g.id}','${c}')" style="width:24px;height:24px;border-radius:50%;background:${c};border:${g.color===c?"3px solid white":"2px solid transparent"};cursor:pointer"></button>`).join("")}
+      </div>
+    </div>`;
+  });
+
+  html += `
+  <div style="background:rgba(255,255,255,0.05);border:1px dashed rgba(255,255,255,0.2);border-radius:16px;padding:16px">
+    <div style="color:white;font-weight:600;margin-bottom:12px">הוסף יעד חדש</div>
+    <input id="new-goal-label" type="text" placeholder="שם היעד..." dir="rtl"
+      style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 12px;color:white;font-size:14px;outline:none;margin-bottom:8px;box-sizing:border-box" />
+    <input id="new-goal-target" type="number" placeholder="סכום יעד" dir="ltr"
+      style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 12px;color:white;font-size:14px;outline:none;margin-bottom:8px;box-sizing:border-box" />
+    <button onclick="window.addGoal()" style="width:100%;padding:10px;background:#fbbf24;color:#1e1b4b;font-weight:bold;border:none;border-radius:12px;cursor:pointer">הוסף יעד</button>
+  </div>`;
+
+  container.innerHTML = html;
+}
+
+// ── BUSINESS ─────────────────────────────────────────────────────
+function renderBusiness(container) {
+  const records = appData.businessRecords.filter(r=>r.date?.startsWith(currentMonth));
+  const income = records.filter(r=>r.type==="income").reduce((s,r)=>s+r.amount,0);
+  const expense = records.filter(r=>r.type==="expense").reduce((s,r)=>s+r.amount,0);
+  const net = income - expense;
+
+  window.addBizRecord = () => {
+    const type = el("biz-type").value;
+    const category = el("biz-cat").value;
+    const amount = parseFloat(el("biz-amount").value)||0;
+    const note = el("biz-note").value;
+    const date = el("biz-date").value;
+    if (!amount) return;
+    const record = {id:uid(),type,category,amount,note,date};
+    updateData(d=>({...d,businessRecords:[...d.businessRecords,record]}));
+  };
+  window.removeBiz = id => {
+    updateData(d=>({...d,businessRecords:d.businessRecords.filter(r=>r.id!==id)}));
+  };
+
+  container.innerHTML = `
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">
+    ${[
+      {label:"הכנסות",val:income,color:"#34d399"},
+      {label:"הוצאות",val:expense,color:"#f87171"},
+      {label:"רווח נקי",val:net,color:net>=0?"#fbbf24":"#f87171"},
+    ].map(({label,val,color})=>`
+      <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;text-align:center">
+        <div style="color:${color};font-weight:bold;font-size:16px">${fmt(val)}</div>
+        <div style="color:rgba(255,255,255,0.4);font-size:11px">${label}</div>
+      </div>`).join("")}
+  </div>
+  ${net>0?`<div style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.2);border-radius:12px;padding:12px;font-size:13px;color:#34d399;margin-bottom:12px">
+    ✅ ${fmt(net)} יועבר לעו״ש החודש</div>`:""}
+  <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:16px;margin-bottom:16px">
+    <div style="color:white;font-weight:600;margin-bottom:12px">הוסף רשומה</div>
+    <select id="biz-type" style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px;color:white;font-size:13px;outline:none;margin-bottom:8px" dir="rtl">
+      <option value="income">הכנסה</option>
+      <option value="expense">הוצאה</option>
+    </select>
+    <input id="biz-cat" type="text" placeholder="קטגוריה (לקוח, ציוד...)" dir="rtl"
+      style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 12px;color:white;font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box" />
+    <input id="biz-amount" type="number" placeholder="סכום" dir="ltr"
+      style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 12px;color:white;font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box" />
+    <input id="biz-date" type="date" value="${new Date().toISOString().slice(0,10)}"
+      style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 12px;color:white;font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box" />
+    <input id="biz-note" type="text" placeholder="הערה..." dir="rtl"
+      style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 12px;color:rgba(255,255,255,0.6);font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box" />
+    <button onclick="window.addBizRecord()" style="width:100%;padding:10px;background:#fbbf24;color:#1e1b4b;font-weight:bold;border:none;border-radius:12px;cursor:pointer">הוסף</button>
+  </div>
+  <div>
+    ${records.length===0?`<div style="text-align:center;color:rgba(255,255,255,0.3);padding:24px">אין רשומות לחודש זה</div>`:""}
+    ${records.map(r=>`
+      <div style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;margin-bottom:8px">
+        <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${r.type==="income"?"#34d399":"#f87171"}"></div>
+        <div style="flex:1">
+          <div style="color:white;font-size:14px">${r.category||r.type}</div>
+          ${r.note?`<div style="color:rgba(255,255,255,0.4);font-size:12px">${r.note}</div>`:""}
+          <div style="color:rgba(255,255,255,0.3);font-size:11px">${r.date}</div>
+        </div>
+        <div style="color:${r.type==="income"?"#34d399":"#f87171"};font-weight:600">${r.type==="income"?"+":"-"}${fmt(r.amount)}</div>
+        <button onclick="window.removeBiz('${r.id}')" style="color:rgba(255,255,255,0.2);background:none;border:none;cursor:pointer">🗑</button>
+      </div>`).join("")}
+  </div>`;
+}
+
+// ── DEBTS ────────────────────────────────────────────────────────
+function renderDebts(container) {
+  const totalDebt = appData.debts.reduce((s,d)=>s+(d.total-d.paid),0);
+  const totalMonthly = appData.debts.reduce((s,d)=>s+(d.monthly||0),0);
+
+  window.addDebt = () => {
+    const label = el("debt-label").value.trim();
+    const total = parseFloat(el("debt-total").value)||0;
+    const paid = parseFloat(el("debt-paid").value)||0;
+    const monthly = parseFloat(el("debt-monthly").value)||0;
+    const note = el("debt-note").value;
+    if (!label) return;
+    updateData(d=>({...d,debts:[...d.debts,{id:uid(),label,total,paid,monthly,note}]}));
+    ["debt-label","debt-total","debt-paid","debt-monthly","debt-note"].forEach(id=>{if(el(id))el(id).value="";});
+  };
+  window.updateDebtPaid = (id, val) => {
+    updateData(d=>({...d,debts:d.debts.map(debt=>debt.id===id?{...debt,paid:val}:debt)}));
+  };
+  window.updateDebtMonthly = (id, val) => {
+    updateData(d=>({...d,debts:d.debts.map(debt=>debt.id===id?{...debt,monthly:val}:debt)}));
+  };
+  window.removeDebt = id => {
+    updateData(d=>({...d,debts:d.debts.filter(debt=>debt.id!==id)}));
+  };
+
+  let html = `
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+    <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px;text-align:center">
+      <div style="color:#f87171;font-weight:bold;font-size:24px">${fmt(totalDebt)}</div>
+      <div style="color:rgba(255,255,255,0.4);font-size:12px">סה״כ חוב</div>
+    </div>
+    <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px;text-align:center">
+      <div style="color:#fb923c;font-weight:bold;font-size:24px">${fmt(totalMonthly)}</div>
+      <div style="color:rgba(255,255,255,0.4);font-size:12px">תשלום חודשי</div>
+    </div>
+  </div>`;
+
+  appData.debts.forEach(debt => {
+    const remaining = debt.total - debt.paid;
+    const pct = Math.min(100,(debt.paid/debt.total)*100);
+    const months = debt.monthly>0 ? Math.ceil(remaining/debt.monthly) : null;
+    html += `
+    <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="color:white;font-weight:500">${debt.label}</div>
+        <button onclick="window.removeDebt('${debt.id}')" style="color:rgba(255,255,255,0.2);background:none;border:none;cursor:pointer">🗑</button>
+      </div>
+      <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:9999px;overflow:hidden;margin-bottom:4px">
+        <div style="height:100%;width:${pct}%;background:linear-gradient(to right,#f87171,#fb923c);border-radius:9999px"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:12px">
+        <span>שולם: ${fmt(debt.paid)}</span><span>נותר: ${fmt(remaining)}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <div style="color:rgba(255,255,255,0.4);font-size:11px;margin-bottom:4px">שולם עד כה</div>
+          <input type="number" value="${debt.paid}" onchange="window.updateDebtPaid('${debt.id}',parseFloat(this.value)||0)"
+            style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px;color:white;font-size:13px;outline:none;box-sizing:border-box" dir="ltr" />
+        </div>
+        <div>
+          <div style="color:rgba(255,255,255,0.4);font-size:11px;margin-bottom:4px">תשלום חודשי</div>
+          <input type="number" value="${debt.monthly}" onchange="window.updateDebtMonthly('${debt.id}',parseFloat(this.value)||0)"
+            style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px;color:white;font-size:13px;outline:none;box-sizing:border-box" dir="ltr" />
+        </div>
+      </div>
+      ${months?`<div style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;margin-top:8px">≈ ${months} חודשים לסיום</div>`:""}
+      ${debt.note?`<div style="color:rgba(255,255,255,0.3);font-size:12px;margin-top:4px">${debt.note}</div>`:""}
+    </div>`;
+  });
+
+  html += `
+  <div style="background:rgba(255,255,255,0.05);border:1px dashed rgba(255,255,255,0.2);border-radius:16px;padding:16px">
+    <div style="color:white;font-weight:600;margin-bottom:12px">הוסף חוב</div>
+    <input id="debt-label" type="text" placeholder="שם החוב..." dir="rtl"
+      style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 12px;color:white;font-size:14px;outline:none;margin-bottom:8px;box-sizing:border-box" />
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <input id="debt-total" type="number" placeholder="סכום כולל" dir="ltr"
+        style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px;color:white;font-size:13px;outline:none" />
+      <input id="debt-paid" type="number" placeholder="כבר שולם" dir="ltr"
+        style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px;color:white;font-size:13px;outline:none" />
+    </div>
+    <input id="debt-monthly" type="number" placeholder="תשלום חודשי" dir="ltr"
+      style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 12px;color:white;font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box" />
+    <input id="debt-note" type="text" placeholder="הערה..." dir="rtl"
+      style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:8px 12px;color:rgba(255,255,255,0.6);font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box" />
+    <button onclick="window.addDebt()" style="width:100%;padding:10px;background:#fbbf24;color:#1e1b4b;font-weight:bold;border:none;border-radius:12px;cursor:pointer">הוסף חוב</button>
+  </div>`;
+
+  container.innerHTML = html;
+}
+
+// ── INIT ──────────────────────────────────────────────────────────
+if (authenticated) {
+  startSync();
+} else {
+  render();
+}
+</script>
+</head>
+<body style="margin:0;padding:0"></body>
+</html>
