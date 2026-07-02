@@ -33,7 +33,7 @@ const INCOME_CATS = [
   {id:"misc_income",label:"שונות",hasNote:true},
   {id:"business",label:"עסק"},
 ];
-const EXPENSE_CATS = [
+const BASE_EXPENSE_CATS = [
   {id:"rent",label:"שכירות"},
   {id:"electricity",label:"חשמל",bimonthly:true},
   {id:"water",label:"מים",bimonthly:true},
@@ -41,7 +41,7 @@ const EXPENSE_CATS = [
   {id:"phone",label:"טלפון"},
   {id:"arnona",label:"ארנונה",bimonthly:true},
   {id:"vaad_bayit",label:"ועד בית"},
-  {id:"car",label:"רכב",isGroup:true,children:[
+  {id:"car",label:"רכב",isGroup:true,extendable:true,children:[
     {id:"car_payment",label:"תשלום על הרכב"},
     {id:"car_insurance",label:"ביטוח"},
     {id:"car_repair",label:"תיקונים"},
@@ -53,12 +53,23 @@ const EXPENSE_CATS = [
     {id:"food_outside",label:"אוכל בחוץ"},
   ]},
   {id:"clothing",label:"ביגוד"},
+  {id:"education",label:"חינוך"},
+  {id:"charity",label:"צדקה"},
   {id:"invest_return",label:"החזרי השקעה"},
   {id:"mortgage",label:"משכנתא"},
   {id:"savings",label:"חיסכון"},
   {id:"debt_payment",label:"תשלום חוב",isDebtPayment:true},
   {id:"misc_expense",label:"שונות",hasNote:true},
 ];
+// Custom categories are stored in appData.customExpenseCats and merged at runtime
+function getExpenseCats() {
+  const custom = (appData.customExpenseCats || []).map(c => ({id:c.id, label:c.label, custom:true}));
+  return [...BASE_EXPENSE_CATS, ...custom];
+}
+function getCarChildren() {
+  const customCar = (appData.customCarItems || []).map(c => ({id:c.id, label:c.label, custom:true}));
+  return [...BASE_EXPENSE_CATS.find(c=>c.id==="car").children, ...customCar];
+}
 
 const INITIAL = {
   months:{},
@@ -101,7 +112,7 @@ const nextMonthKey = key => {
   const d = new Date(y, m, 1);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
 };
-const getAllExpCats = () => EXPENSE_CATS.reduce((a,c)=>c.isGroup?[...a,...c.children]:[...a,c],[]);
+const getAllExpCats = () => getExpenseCats().reduce((a,c)=>c.isGroup?[...a,...(c.id==="car"?getCarChildren():c.children)]:[...a,c],[]);
 
 // ── Calculate month balance ───────────────────────────────────────
 const calcMonthBalance = (monthData, bizRecords, monthKey, debts) => {
@@ -130,7 +141,9 @@ const applyMonthlyInterest = (debts, fromKey, toKey) => {
 let appData = JSON.parse(JSON.stringify(INITIAL));
 let currentPage = "dashboard";
 let currentMonth = nowKey();
-let authenticated = !!sessionStorage.getItem("af_auth");
+const AUTH_TIMEOUT = 3 * 60 * 1000; // 3 minutes
+const lastAuth = parseInt(localStorage.getItem("af_auth")||"0");
+let authenticated = (Date.now() - lastAuth) < AUTH_TIMEOUT;
 let saving = false;
 let unsubscribe = null;
 
@@ -144,13 +157,26 @@ async function saveToFirebase(data) {
 
 function startSync() {
   if (unsubscribe) unsubscribe();
+  let firstLoad = true;
   unsubscribe = onSnapshot(doc(db, "budget", "shared"), snap => {
     if (snap.exists()) {
-      appData = { ...INITIAL, ...snap.data() };
-    } else {
+      const remoteData = snap.data();
+      // Safety: never accept empty data overwriting existing local data
+      const remoteHasContent = remoteData && Object.keys(remoteData.months || {}).length > 0;
+      const localHasContent = appData && Object.keys(appData.months || {}).length > 0;
+      if (!remoteHasContent && localHasContent && !firstLoad) {
+        console.warn("Blocked potential data wipe from Firebase");
+        return;
+      }
+      appData = { ...INITIAL, ...remoteData };
+    } else if (firstLoad) {
+      // Only create the document if this is truly the first time ever
       saveToFirebase(appData);
     }
+    firstLoad = false;
     render();
+  }, (error) => {
+    console.error("Firebase sync error:", error);
   });
 }
 
@@ -179,6 +205,7 @@ function render() {
 
 // ── LOGIN ─────────────────────────────────────────────────────────
 function renderLogin() {
+  const hasBiometric = !!localStorage.getItem("af_biometric");
   document.body.innerHTML = `
   <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:linear-gradient(135deg,#0f172a,#1e1b4b,#0f172a)">
     <div style="width:100%;max-width:360px">
@@ -188,27 +215,84 @@ function renderLogin() {
         <p style="color:rgba(255,255,255,0.4);margin:8px 0 0">ניהול תקציב משפחתי</p>
       </div>
       <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:24px">
+        ${hasBiometric ? `
+        <button onclick="window.tryBiometric()"
+          style="width:100%;padding:16px;background:rgba(251,191,36,0.15);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);border-radius:12px;cursor:pointer;font-size:18px;margin-bottom:12px">
+          👆 כניסה עם טביעת אצבע
+        </button>
+        <div style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;margin-bottom:12px">או</div>` : ""}
         <label style="color:rgba(255,255,255,0.6);font-size:13px;display:block;margin-bottom:8px">סיסמה</label>
         <input id="pw" type="password" placeholder="הכנס סיסמה..."
           style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:12px 16px;color:white;font-size:18px;text-align:center;letter-spacing:4px;outline:none;box-sizing:border-box;margin-bottom:12px"
           onkeydown="if(event.key==='Enter') window.checkPw()" />
         <div id="pw-err" style="color:#f87171;font-size:13px;text-align:center;margin-bottom:12px;display:none">סיסמה שגויה</div>
         <button onclick="window.checkPw()"
-          style="width:100%;padding:14px;background:#fbbf24;color:#1e1b4b;font-weight:bold;border:none;border-radius:12px;cursor:pointer;font-size:16px">כניסה</button>
+          style="width:100%;padding:14px;background:#fbbf24;color:#1e1b4b;font-weight:bold;border:none;border-radius:12px;cursor:pointer;font-size:16px;margin-bottom:8px">כניסה</button>
+        ${!hasBiometric ? `<button onclick="window.setupBiometric()"
+          style="width:100%;padding:10px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.1);border-radius:12px;cursor:pointer;font-size:13px">
+          הגדר כניסה עם טביעת אצבע</button>` : ""}
       </div>
     </div>
   </div>`;
+
+  window.doLogin = () => {
+    localStorage.setItem("af_auth", Date.now().toString());
+    authenticated = true;
+    startSync();
+  };
+
   window.checkPw = () => {
     if (el("pw").value === APP_PASSWORD) {
-      sessionStorage.setItem("af_auth","1");
-      authenticated = true;
-      startSync();
+      window.doLogin();
     } else {
       el("pw-err").style.display="block";
       el("pw").value="";
     }
   };
+
+  window.setupBiometric = async () => {
+    if (el("pw").value !== APP_PASSWORD) {
+      el("pw-err").style.display="block";
+      el("pw-err").textContent="הכנס סיסמה נכונה קודם";
+      return;
+    }
+    try {
+      const cred = await navigator.credentials.create({
+        publicKey: {
+          challenge: new Uint8Array(32),
+          rp: { name: "ארי ופייגי" },
+          user: { id: new Uint8Array(16), name: "family", displayName: "ארי ופייגי" },
+          pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+          authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+          timeout: 60000,
+        }
+      });
+      localStorage.setItem("af_biometric", cred.id);
+  window.doLogin();
+    } catch(e) {
+      alert("טביעת אצבע לא זמינה במכשיר זה");
+    }
+  };
+
+  window.tryBiometric = async () => {
+    try {
+      await navigator.credentials.get({
+        publicKey: {
+          challenge: new Uint8Array(32),
+          userVerification: "required",
+          timeout: 60000,
+        }
+      });
+      window.doLogin();
+    } catch(e) {
+      el("pw-err") && (el("pw-err").style.display="block");
+    }
+  };
+
+  // Auto-try biometric on load
+  if (hasBiometric) setTimeout(() => window.tryBiometric(), 300);
 }
+
 
 // ── MAIN APP ──────────────────────────────────────────────────────
 function renderApp() {
@@ -331,7 +415,23 @@ function renderBudget(container) {
   const incTotal = INCOME_CATS.reduce((s,c)=>s+(month[`inc_${c.id}`]||0),0);
   const expTotal = expCats.reduce((s,c)=>s+(month[`exp_${c.id}`]||0),0);
 
-  window.setBudget = (key,val) => setField(key,parseFloat(val)||0);
+  window.setBudget = (key,val) => {
+    const numVal = parseFloat(val)||0;
+    if (key === "exp_debt_payment") {
+      const debtId = month.debtPaymentId;
+      const oldVal = month["exp_debt_payment"] || 0;
+      const diff = numVal - oldVal;
+      if (debtId && diff !== 0) {
+        updateData(d => {
+          const newMonths = {...d.months,[currentMonth]:{...(d.months[currentMonth]||{}),[key]:numVal}};
+          const newDebts = d.debts.map(deb => deb.id===debtId ? {...deb, paid: Math.max(0, deb.paid + diff)} : deb);
+          return {...d, months:newMonths, debts:newDebts};
+        });
+        return;
+      }
+    }
+    setField(key,numVal);
+  };
   window.setBudgetNote = (key,val) => setField(key,val);
 
   const numInput = (fk,val) => `<input type="number" value="${val||""}" placeholder="₪0" dir="ltr"
@@ -361,20 +461,28 @@ function renderBudget(container) {
       <div style="color:white;font-weight:600;font-size:16px">הוצאות</div>
       <div style="color:#f87171;font-weight:bold">${fmt(expTotal)}</div>
     </div>`;
-  EXPENSE_CATS.forEach(c => {
+  getExpenseCats().forEach(c => {
     if (c.isGroup) {
-      const groupTotal = c.children.reduce((s,ch)=>s+(month[`exp_${ch.id}`]||0),0);
+      const children = c.id==="car" ? getCarChildren() : c.children;
+      const groupTotal = children.reduce((s,ch)=>s+(month[`exp_${ch.id}`]||0),0);
       html += `<div style="border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;margin-bottom:8px">
           <div style="color:rgba(255,255,255,0.8);font-size:13px;font-weight:500">${c.label}</div>
           <div style="color:rgba(255,255,255,0.4);font-size:12px">${fmt(groupTotal)}</div>
         </div>`;
-      c.children.forEach(ch => {
+      children.forEach(ch => {
         html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-right:8px">
-          <label style="color:rgba(255,255,255,0.6);font-size:12px;width:130px;flex-shrink:0">${ch.label}</label>
+          <label style="color:rgba(255,255,255,0.6);font-size:12px;width:130px;flex-shrink:0">${ch.label}${ch.custom?` <button onclick="window.removeCarItem('${ch.id}')" style="color:rgba(255,255,255,0.2);background:none;border:none;cursor:pointer;font-size:10px">🗑</button>`:""}</label>
           ${numInput(`exp_${ch.id}`,month[`exp_${ch.id}`])}
         </div>`;
       });
+      if (c.extendable) {
+        html += `<div style="display:flex;gap:6px;margin-top:8px;padding-right:8px">
+          <input id="new-car-item" type="text" placeholder="הוצאת רכב חדשה..." dir="rtl"
+            style="flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:6px 10px;color:white;font-size:12px;outline:none" />
+          <button onclick="window.addCarItem()" style="background:rgba(251,191,36,0.2);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer">+ הוסף</button>
+        </div>`;
+      }
       html += `</div>`;
     } else if (c.isDebtPayment) {
       html += `<div style="margin-bottom:10px">
@@ -385,13 +493,14 @@ function renderBudget(container) {
             ${appData.debts.map(d=>`<option value="${d.id}" ${month.debtPaymentId===d.id?"selected":""}>${d.label} (נותר: ${fmt(d.total-d.paid)})</option>`).join("")}
           </select>
         </div>
-        ${month.debtPaymentId?`<div style="margin-top:6px">${numInput("exp_debt_payment",month["exp_debt_payment"])}</div>`:""}
+        ${month.debtPaymentId?`<div style="margin-top:6px">${numInput("exp_debt_payment",month["exp_debt_payment"])}</div>
+        <div style="color:rgba(255,255,255,0.3);font-size:11px;margin-top:2px">התשלום יקוזז אוטומטית מיתרת החוב</div>`:""}
       </div>`;
     } else {
       html += `<div style="margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:8px">
           <label style="color:rgba(255,255,255,0.7);font-size:13px;width:140px;flex-shrink:0">
-            ${c.label}${c.bimonthly?`<span style="color:#fbbf24;font-size:10px;margin-right:4px">(דו-חודשי)</span>`:""}
+            ${c.label}${c.bimonthly?`<span style="color:#fbbf24;font-size:10px;margin-right:4px">(דו-חודשי)</span>`:""}${c.custom?` <button onclick="window.removeCustomCat('${c.id}')" style="color:rgba(255,255,255,0.2);background:none;border:none;cursor:pointer;font-size:10px">🗑</button>`:""}
           </label>
           ${numInput(`exp_${c.id}`,month[`exp_${c.id}`])}
         </div>
@@ -402,8 +511,34 @@ function renderBudget(container) {
       </div>`;
     }
   });
+  html += `
+  <div style="border:1px dashed rgba(255,255,255,0.2);border-radius:12px;padding:12px;margin-top:8px">
+    <div style="color:rgba(255,255,255,0.5);font-size:12px;margin-bottom:8px">הוסף קטגוריית הוצאה קבועה</div>
+    <div style="display:flex;gap:6px">
+      <input id="new-exp-cat" type="text" placeholder="שם הקטגוריה..." dir="rtl"
+        style="flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:8px 10px;color:white;font-size:13px;outline:none" />
+      <button onclick="window.addCustomCat()" style="background:rgba(251,191,36,0.2);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer">+ הוסף</button>
+    </div>
+  </div>`;
   html += `</div>`;
   container.innerHTML = html;
+
+  window.addCustomCat = () => {
+    const label = el("new-exp-cat")?.value.trim();
+    if (!label) return;
+    updateData(d=>({...d,customExpenseCats:[...(d.customExpenseCats||[]),{id:"custom_"+uid(),label}]}));
+  };
+  window.removeCustomCat = (id) => {
+    updateData(d=>({...d,customExpenseCats:(d.customExpenseCats||[]).filter(c=>c.id!==id)}));
+  };
+  window.addCarItem = () => {
+    const label = el("new-car-item")?.value.trim();
+    if (!label) return;
+    updateData(d=>({...d,customCarItems:[...(d.customCarItems||[]),{id:"car_custom_"+uid(),label}]}));
+  };
+  window.removeCarItem = (id) => {
+    updateData(d=>({...d,customCarItems:(d.customCarItems||[]).filter(c=>c.id!==id)}));
+};
 
   window.setBudgetDebt = (debtId) => {
     updateData(d=>({...d,months:{...d.months,[currentMonth]:{...(d.months[currentMonth]||{}),debtPaymentId:debtId}}}));
@@ -673,8 +808,7 @@ function renderBusiness(container) {
     updateData(d=>({...d,businessRecords:[...d.businessRecords,{id:uid(),type,category,amount,note,date}]}));
   };
   window.removeBiz = id => updateData(d=>({...d,businessRecords:d.businessRecords.filter(r=>r.id!==id)}));
-
-  container.innerHTML = `
+container.innerHTML = `
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">
     ${[
       {label:"הכנסות",val:income,color:"#34d399"},
@@ -940,4 +1074,5 @@ else render();
 </head>
 <body style="margin:0;padding:0"></body>
 </html>
+
 
